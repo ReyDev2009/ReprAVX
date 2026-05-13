@@ -1,3 +1,0 @@
-/home/rey/Documentos/ReprAPI/build/CMakeFiles/repra_test.dir
-/home/rey/Documentos/ReprAPI/build/CMakeFiles/edit_cache.dir
-/home/rey/Documentos/ReprAPI/build/CMakeFiles/rebuild_cache.dir
