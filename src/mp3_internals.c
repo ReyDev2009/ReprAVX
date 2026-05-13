@@ -102,7 +102,7 @@ uint32_t get_bits( BitStream* bs , uint32_t num_bits ) {
     int byte_pos = bs ->bit_pos >> 3;
     int bit_offset = bs -> bit_pos & 7;
 
-    uint32_t window = __builtin_bswap64( *(uint32_t* )&bs->data[ byte_pos ] );
+    uint64_t window = __builtin_bswap64( *(uint64_t* )&bs->data[ byte_pos ] );
     window <<= bit_offset;
     uint32_t result = ( uint32_t ) ( window >> ( 64 - num_bits ));
     bs->bit_pos += num_bits;
