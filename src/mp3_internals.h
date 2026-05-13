@@ -21,11 +21,11 @@ typedef struct {
     // Calculados
     int bitrate;          
     int samplerate;       
-    int frame_size;       
+    size_t frame_size;       
 } MP3Header;
 
 typedef struct {
-    const uint32_t* data;
+    uint32_t* data;
     int bit_pos;
 } BitStream;
 

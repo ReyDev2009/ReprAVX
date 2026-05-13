@@ -58,7 +58,7 @@ long get_filesize( const char* file){
 }
 
 
-MP3Map get_mp3_data ( const char* filepath ) {
+MP3Map* get_mp3_data ( const char* filepath ) {
     FILE* file = fopen ( filepath , "rb");
     long filesize = get_filesize( filepath );
     
@@ -92,10 +92,10 @@ MP3Map get_mp3_data ( const char* filepath ) {
         else pos++;
 
     }
-    free ( raw_data );
+    
     printf("Frames: %d\n", total_frames );
     MP3Map map = { frame_offsets, total_frames };
-    return map;
+    return &map;
 }
 
 uint32_t get_bits( BitStream* bs , uint32_t num_bits ) {
@@ -109,16 +109,15 @@ uint32_t get_bits( BitStream* bs , uint32_t num_bits ) {
     return result;
 }
 
-int extract_side_info ( const uint32_t* raw_data ) {
-    BitStream bs = {.bit_pos = 0, .data = &raw_data[ 4 ]};
+SideInfo* extract_side_info ( BitStream *bs ) {
     SideInfo si;
-    si.main_data_begin = get_bits( &bs, 9 );
-    si.private_bits = get_bits ( &bs, 3 );
+    si.main_data_begin = get_bits( bs, 9 );
+    si.private_bits = get_bits ( bs, 3 );
 
 
     for ( int ch = 0; ch < 2; ch ++ ) {
         for ( int sc = 0; sc < 4 ; sc ++ ) {
-            si.scfsi[ ch ] [ sc ] = get_bits(&bs, 1 );
+            si.scfsi[ ch ] [ sc ] = get_bits(bs, 1 );
         }
     }
 
@@ -126,41 +125,68 @@ int extract_side_info ( const uint32_t* raw_data ) {
         for ( int ch = 0 ; ch < 2; ch ++ ) {
             GranuleInfo *gi = &si.gr [ gr ] [ ch ];
 
-            gi->part2_3_length = get_bits ( &bs , 12 );
-            gi->big_values = get_bits( &bs, 9 );
-            gi->global_gain = get_bits ( &bs, 8 );
-            gi->scalefac_compress = get_bits ( &bs , 4 );
+            gi->part2_3_length = get_bits ( bs , 12 );
+            gi->big_values = get_bits( bs, 9 );
+            gi->global_gain = get_bits ( bs, 8 );
+            gi->scalefac_compress = get_bits ( bs , 4 );
             gi->window_switching_flag = get_bits( &bs, 1 );
 
             if ( gi->window_switching_flag ) {
-                gi->block_type = get_bits( &bs, 2 );
-                gi->mixed_block_flag = get_bits( &bs, 1 );
+                gi->block_type = get_bits( bs, 2 );
+                gi->mixed_block_flag = get_bits( bs, 1 );
                 for ( int i = 0 ; i < 2 ; i ++ ) {
-                    gi->table_select [ i ] = get_bits ( &bs, 5 );
+                    gi->table_select [ i ] = get_bits ( bs, 5 );
                 }
                 for ( int i = 0 ; i < 3 ; i ++ ) {
-                    gi->subblock_gain [ i ] = get_bits ( &bs, 5 );
+                    gi->subblock_gain [ i ] = get_bits ( bs, 5 );
                 }
                 gi->region0_count = (gi->block_type == 2) ? 8 : 7;
                 gi->region1_count = 20 - gi->region0_count;
             }
             else{
                 for ( int i = 0 ; i < 3; i ++ ) {
-                    gi->table_select_long[ i ] = get_bits( &bs, 5 );
+                    gi->table_select_long[ i ] = get_bits( bs, 5 );
                 }
-                gi->region0_count = get_bits ( &bs, 4 );
-                gi->region1_count = get_bits ( &bs, 3 );
+                gi->region0_count = get_bits ( bs, 4 );
+                gi->region1_count = get_bits ( bs, 3 );
                 gi->block_type = 0;
             }
-            gi->preflag = get_bits(&bs, 1);
-            gi->scalefac_scale = get_bits(&bs, 1);
-            gi->count1table_select = get_bits(&bs, 1);
+            gi->preflag = get_bits(bs, 1);
+            gi->scalefac_scale = get_bits(bs, 1);
+            gi->count1table_select = get_bits(bs, 1);
             
         }
     }
 
-
+    return &si;
     
 }
 
 
+int proccess_mp3 ( const char* filepath , uint8_t* raw_data) {
+    MP3Map* mp3map = get_mp3_data  ( filepath );
+    uint8_t main_data_buffer[ 131072 ];
+    int buffer_ptr = 0;
+
+    for ( int frame = 0 ; frame < mp3map->count ; frame ++ ) {
+        int pos = mp3map->offsets[ frame ];
+        MP3Header header;
+        uint32_t h = read_32be( &raw_data [ pos ]);
+        parse_header ( h, &header);
+        BitStream bs = {.bit_pos = 0, .data = &raw_data [ pos + 4 ]};
+        SideInfo* si = extract_side_info ( &bs );
+
+        int side_info_size = bs.bit_pos >> 3;
+        size_t main_data_in_frame = header.frame_size - side_info_size - 4;
+        
+        memcpy ( &main_data_buffer [ buffer_ptr ] , raw_data [ pos + side_info_size + 4] , main_data_in_frame );
+        uint32_t exceded_mask = ( buffer_ptr + main_data_in_frame ) >> 16;
+        memmove ( &main_data_buffer[ 0 ], &main_data_buffer [ 65536 ], 512 * exceded_mask);
+        buffer_ptr = ( buffer_ptr + main_data_in_frame ) & 0xFFFF;
+        
+        BitStream huffman_bs;
+        huffman_bs.data = &main_data_buffer [ buffer_ptr - main_data_in_frame - si->main_data_begin ];
+        huffman_bs.bit_pos = 0;
+        
+    }
+}
