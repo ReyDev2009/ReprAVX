@@ -62,7 +62,6 @@ MP3Map* get_mp3_data ( const char* filepath ) {
     FILE* file = fopen ( filepath , "rb");
     long filesize = get_filesize( filepath );
     
-    
     uint8_t* raw_data = allocate_aligned_buffer ( filesize );
     fread ( raw_data , 1, filesize , file );
     fclose( file );
@@ -162,10 +161,45 @@ SideInfo* extract_side_info ( BitStream *bs ) {
     
 }
 
+void extract_scalefactors ( BitStream* huff_bs, SideInfo* si ) {
+    for ( int ch = 0 ; ch < 2; ch ++ ) {
+        for ( int gr = 0 ; gr < 2 ; gr ++ ) {
+            GranuleInfo* gi = si->gr [ gr ] [ ch ];
+            int slen0 = slen_table [ gi->scalefac_compress ] [ 0 ];
+            int slen1 = slen_table [ gi->scalefac_compress ] [ 1 ];
+            
+            if ( gi->window_switching_flag && gi->block_type == 2 ) {
+                for ( int i = 0 ; i < 6; i ++ )
+                    for ( int w = 0 ; w < 3 ; w ++ ) gi ->scalefac_s [ i ] [ w ] = get_bits ( huff_bs , slen0 );
+                
+                for ( int i = 6 ; i < 12; i ++ )
+                    for ( int w = 0 ; w < 3 ; w ++ ) gi ->scalefac_s [ i ] [ w ] = get_bits ( huff_bs , slen0 );
+                
+            }
+            else {
+                GranuleInfo* gi0 = si -> gr [ 0 ] [ ch ];
+                int limits[] = { 0 , 6, 11, 16, 21 };
+                
+                for ( int section = 0; section < 4; section++ ) {
+                    int cslen = ( section < 2 ) ? slen0 : slen1;
+                    
+                    if ( gr == 0 || !si->scfsi [ ch ] [ section ] ) {
+                        for ( int i = limits[ section ]; i < limits [ section + 1 ]; i ++ ) gi->scalefac_l [ i ] = get_bits( huff_bs , cslen );
+                    }
+                    else {
+                        for ( int i = limits [ section ] ; i < limits[ section + 1 ] ; i ++ ) gi->scalefac_l [ i ] = gi0->scalefac_l [ i ];
+                    }
+                }
+
+            }
+        }
+    }
+}
+
 
 int proccess_mp3 ( const char* filepath , uint8_t* raw_data) {
     MP3Map* mp3map = get_mp3_data  ( filepath );
-    uint8_t main_data_buffer[ 131072 ];
+    uint8_t main_data_buffer[ 69632 ];
     int buffer_ptr = 0;
 
     for ( int frame = 0 ; frame < mp3map->count ; frame ++ ) {
@@ -176,9 +210,11 @@ int proccess_mp3 ( const char* filepath , uint8_t* raw_data) {
         BitStream bs = {.bit_pos = 0, .data = &raw_data [ pos + 4 ]};
         SideInfo* si = extract_side_info ( &bs );
 
+
         int side_info_size = bs.bit_pos >> 3;
         size_t main_data_in_frame = header.frame_size - side_info_size - 4;
         
+        // Usamos una mascara para reiniciar puntero
         memcpy ( &main_data_buffer [ buffer_ptr ] , raw_data [ pos + side_info_size + 4] , main_data_in_frame );
         uint32_t exceded_mask = ( buffer_ptr + main_data_in_frame ) >> 16;
         memmove ( &main_data_buffer[ 0 ], &main_data_buffer [ 65536 ], 512 * exceded_mask);
@@ -187,6 +223,34 @@ int proccess_mp3 ( const char* filepath , uint8_t* raw_data) {
         BitStream huffman_bs;
         huffman_bs.data = &main_data_buffer [ buffer_ptr - main_data_in_frame - si->main_data_begin ];
         huffman_bs.bit_pos = 0;
+        extract_scalefactors ( &huffman_bs , si);
+
+        for ( int ch = 0 ; ch < 2; ch ++ ) {
+            for ( int gr = 0 ; gr < 2 ; gr ++ ) {
+                GranuleInfo* gi = si->gr [ gr ] [ ch ];
+                int max_samples = gi->big_values * 2;
+                int boundary_0 = 0;
+                int boundary_1 = 0;
+
+                if ( gi->window_switching_flag && gi->block_type == 2 ) {
+                    boundary_0 = 36;
+                    boundary_1 = 576;
+                }
+                else { 
+                    int r0_end = gi->region0_count + 1;
+                    boundary_0 = sfband_table_long_44100[ r0_end ];
+                    int r1_end = r0_end + gi->region1_count + 1;
+                    boundary_1 = sfband_table_long_44100[ r1_end ];
+                }
+                
+
+                if ( boundary_0 > max_samples ) boundary_0 = max_samples;
+                if ( boundary_1 > max_samples ) boundary_1 = max_samples;
+
+                
+                
+            }
+        }
         
     }
 }

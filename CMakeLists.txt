@@ -16,13 +16,13 @@ include_directories(include src)
 # Aquí listamos todos tus archivos .c (la "cocina")
 find_package(ALSA REQUIRED)
 set(SOURCES 
-src/alloc.c 
-src/engine.c
-src/dsp_avx2.c
-src/loader.c
-src/backend_alsa.c
-src/repra_threads.c
-src/mp3_internals.c
+src/allocs/alloc.c 
+src/engine/engine.c
+src/dsp/dsp_avx2.c
+src/loaders/loader.c
+src/alsa/backend_alsa.c
+src/threads/repra_threads.c
+src/mp3/mp3_internals.c
 # Cuando crees src/dsp_avx2.c, lo agregas aquí abajo
 )
 

@@ -57,6 +57,8 @@ typedef struct {
     uint8_t  preflag;            // 1 bit
     uint8_t  scalefac_scale;     // 1 bit
     uint8_t  count1table_select; // 1 bit
+    int scalefac_l[23];       // Para bloques largos (21 bandas + seguridad)
+    int scalefac_s[13][3]; // Para bloques cortos (12 bandas * 3 ventanas)
 } GranuleInfo;
 
 const int samplerates_table[4][4] = {
@@ -84,5 +86,17 @@ const int bitrates_table[2][4][16] = {
         {0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 0}  // Layer I
     }
 };
+
+const int slen_table[16][2] = {
+    {0, 0}, {0, 1}, {0, 2}, {0, 3}, {3, 0}, {1, 1}, {1, 2}, {1, 3},
+    {2, 1}, {2, 2}, {2, 3}, {3, 1}, {3, 2}, {3, 3}, {4, 2}, {4, 3}
+};
+
+// Indica en qué número de muestra empieza cada una de las 22 bandas
+const int sfband_table_long_44100[23] = {
+    0, 4, 8, 12, 16, 20, 24, 30, 36, 44, 52, 62, 74, 
+    90, 110, 134, 162, 196, 238, 288, 346, 418, 576
+};
+
 
 #endif
